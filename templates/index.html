@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0B0E11">
+<title>Sensor Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0B0E11;
+    --panel: #151A1F;
+    --line: #262E35;
+    --ink: #EDEFEC;
+    --ink-dim: #8A938D;
+    --amber: #FFA64D;
+    --green: #54D67E;
+    --red-axis: #FF6B5B;
+    --teal-axis: #4FD8A8;
+    --blue-axis: #5EC8F0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans Condensed', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    padding: 20px 16px 40px;
+  }
+
+  .wrap { max-width: 480px; margin: 0 auto; }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--ink-dim);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 10px 5px 8px;
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ink-dim);
+    transition: background 200ms ease;
+  }
+
+  .status-pill.ok .dot { background: var(--green); }
+  .status-pill.ok { color: var(--green); }
+  .status-pill.bad .dot { background: var(--red-axis); }
+  .status-pill.bad { color: var(--red-axis); }
+
+  section { margin-bottom: 28px; }
+
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--ink-dim);
+    margin-bottom: 10px;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+  }
+
+  .touch-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+  }
+
+  .channel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .led {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #1C2228;
+    border: 2px solid var(--line);
+    transition: background 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+  }
+
+  .led.active {
+    background: var(--amber);
+    border-color: var(--amber);
+    box-shadow: 0 0 14px 2px rgba(255, 166, 77, 0.55);
+  }
+
+  .ch-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-dim);
+    letter-spacing: 0.04em;
+  }
+
+  .axis-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+  }
+
+  .axis-row + .axis-row { border-top: 1px solid var(--line); }
+
+  .axis-label {
+    width: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .axis-row[data-axis="x"] .axis-label { color: var(--red-axis); }
+  .axis-row[data-axis="y"] .axis-label { color: var(--teal-axis); }
+  .axis-row[data-axis="z"] .axis-label { color: var(--blue-axis); }
+
+  canvas {
+    flex: 1;
+    height: 36px;
+    display: block;
+  }
+
+  .axis-value {
+    width: 70px;
+    text-align: right;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+  }
+
+  .unit { color: var(--ink-dim); font-size: 11px; }
+
+  footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-dim);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .led, .dot { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Sensor Panel</h1>
+      <div class="status-pill" id="status-pill">
+        <span class="dot"></span>
+        <span id="status-text">CONNECTING</span>
+      </div>
+    </header>
+
+    <section>
+      <div class="eyebrow">TOUCH · 5 CHANNELS</div>
+      <div class="panel">
+        <div class="touch-grid" id="touch-grid"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="eyebrow">GYROSCOPE · DEG/SEC</div>
+      <div class="panel">
+        <div class="axis-row" data-axis="x">
+          <span class="axis-label">X</span>
+          <canvas id="canvas-x"></canvas>
+          <span class="axis-value"><span id="value-x">0.0</span><span class="unit"> °/s</span></span>
+        </div>
+        <div class="axis-row" data-axis="y">
+          <span class="axis-label">Y</span>
+          <canvas id="canvas-y"></canvas>
+          <span class="axis-value"><span id="value-y">0.0</span><span class="unit"> °/s</span></span>
+        </div>
+        <div class="axis-row" data-axis="z">
+          <span class="axis-label">Z</span>
+          <canvas id="canvas-z"></canvas>
+          <span class="axis-value"><span id="value-z">0.0</span><span class="unit"> °/s</span></span>
+        </div>
+      </div>
+    </section>
+
+    <footer id="footer-text">Waiting for first reading…</footer>
+  </div>
+
+<script>
+  const HISTORY_LEN = 50;
+  const RANGE = 250; // deg/s — matches the MPU6050's default sensitivity range
+
+  // Build the 5 touch channel indicators
+  const touchGrid = document.getElementById('touch-grid');
+  const leds = [];
+  for (let i = 0; i < 5; i++) {
+    const ch = document.createElement('div');
+    ch.className = 'channel';
+    const led = document.createElement('div');
+    led.className = 'led';
+    const label = document.createElement('span');
+    label.className = 'ch-label';
+    label.textContent = 'CH ' + (i + 1);
+    ch.appendChild(led);
+    ch.appendChild(label);
+    touchGrid.appendChild(ch);
+    leds.push(led);
+  }
+
+  // Gyroscope sparklines
+  const axes = ['x', 'y', 'z'];
+  const colors = { x: '#FF6B5B', y: '#4FD8A8', z: '#5EC8F0' };
+  const history = { x: [], y: [], z: [] };
+  const canvases = {};
+
+  function sizeCanvas(canvas) {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+  }
+
+  axes.forEach(a => {
+    const c = document.getElementById('canvas-' + a);
+    canvases[a] = c;
+    sizeCanvas(c);
+  });
+
+  window.addEventListener('resize', () => axes.forEach(a => sizeCanvas(canvases[a])));
+
+  function drawSparkline(axis) {
+    const canvas = canvases[axis];
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const data = history[axis];
+
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h / 2);
+    ctx.lineTo(w, h / 2);
+    ctx.stroke();
+
+    if (data.length < 2) return;
+
+    ctx.strokeStyle = colors[axis];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    data.forEach((val, i) => {
+      const x = (i / (HISTORY_LEN - 1)) * w;
+      const clamped = Math.max(-RANGE, Math.min(RANGE, val));
+      const y = h / 2 - (clamped / RANGE) * (h / 2 - 2);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  function pushHistory(axis, value) {
+    const arr = history[axis];
+    arr.push(value);
+    if (arr.length > HISTORY_LEN) arr.shift();
+  }
+
+  const statusPill = document.getElementById('status-pill');
+  const statusText = document.getElementById('status-text');
+  const footerText = document.getElementById('footer-text');
+
+  function setStatus(connected) {
+    statusPill.classList.toggle('ok', connected);
+    statusPill.classList.toggle('bad', !connected);
+    statusText.textContent = connected ? 'LINK OK' : 'NO LINK';
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch('/api/sensors');
+      const data = await res.json();
+
+      data.touch.forEach((v, i) => { if (leds[i]) leds[i].classList.toggle('active', !!v); });
+
+      pushHistory('x', data.gyroX);
+      pushHistory('y', data.gyroY);
+      pushHistory('z', data.gyroZ);
+      axes.forEach(drawSparkline);
+
+      document.getElementById('value-x').textContent = data.gyroX.toFixed(1);
+      document.getElementById('value-y').textContent = data.gyroY.toFixed(1);
+      document.getElementById('value-z').textContent = data.gyroZ.toFixed(1);
+
+      setStatus(data.connected);
+      footerText.textContent = data.connected
+        ? 'Live · updating 5×/sec'
+        : 'Arduino not responding — check the USB cable and serial port';
+    } catch (e) {
+      setStatus(false);
+      footerText.textContent = 'Cannot reach the server';
+    }
+  }
+
+  poll();
+  setInterval(poll, 200);
+</script>
+</body>
+</html>
