@@ -160,6 +160,37 @@
 
   .unit { color: var(--ink-dim); font-size: 11px; }
 
+  .mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .mode-row + .mode-row { margin-top: 10px; }
+
+  .mode-label {
+    font-size: 13px;
+    color: var(--ink-dim);
+  }
+
+  .mode-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--ink-dim);
+  }
+
+  .mode-badge.on {
+    color: var(--green);
+    border-color: var(--green);
+    background: rgba(84, 214, 126, 0.1);
+  }
+
   footer {
     margin-top: 20px;
     text-align: center;
@@ -207,6 +238,20 @@
           <span class="axis-label">Z</span>
           <canvas id="canvas-z"></canvas>
           <span class="axis-value"><span id="value-z">0.0</span><span class="unit"> °/s</span></span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="eyebrow">GYRO-CURSOR MODE</div>
+      <div class="panel">
+        <div class="mode-row">
+          <span class="mode-label">Mode armed (CH1 off, CH2 on)</span>
+          <span class="mode-badge" id="badge-mode">OFF</span>
+        </div>
+        <div class="mode-row">
+          <span class="mode-label">Steering cursor (+ CH4 held)</span>
+          <span class="mode-badge" id="badge-cursor">OFF</span>
         </div>
       </div>
     </section>
@@ -318,6 +363,10 @@
       document.getElementById('value-z').textContent = data.gyroZ.toFixed(1);
 
       setStatus(data.connected);
+      document.getElementById('badge-mode').classList.toggle('on', !!data.mode_active);
+      document.getElementById('badge-mode').textContent = data.mode_active ? 'ON' : 'OFF';
+      document.getElementById('badge-cursor').classList.toggle('on', !!data.cursor_active);
+      document.getElementById('badge-cursor').textContent = data.cursor_active ? 'ON' : 'OFF';
       footerText.textContent = data.connected
         ? 'Live · updating 5×/sec'
         : 'Arduino not responding — check the USB cable and serial port';
