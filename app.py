@@ -36,6 +36,10 @@ GYRO-CURSOR MODE
       position).
     - While steering (CH4 held, inside the mode), tapping CH5 fires one
       left click per tap.
+    - While the mode is active, holding CH3 by itself scrolls down, and
+      holding CH3 + CH4 together scrolls up. This works independently of
+      steering, so it doesn't require CH4 - except for the "scroll up"
+      combination, which does.
   Press ESC at any time to quit the whole program immediately.
 
   OS PERMISSIONS THIS NEEDS (pynput moves your real mouse + reads keys):
@@ -83,6 +87,9 @@ SENSITIVITY_MAX = 20.0
 DEFAULT_INVERT_X = False
 DEFAULT_INVERT_Y = False
 MAX_DT = 0.25  # clamp time jumps (e.g. after a stall) so the cursor can't leap
+SCROLL_AMOUNT = 2  # scroll "clicks" sent per reading while CH3 is held - the
+                    # Arduino sketch reports ~10x/sec by default, so this is
+                    # roughly 20 clicks/sec; raise/lower to taste
 # ----------------------------------------------------------------
 
 app = Flask(__name__)
@@ -96,6 +103,7 @@ state = {
     "last_update": None,
     "mode_active": False,    # CH1 off AND CH2 on
     "cursor_active": False,  # mode_active AND CH4 held (gyro is steering)
+    "scroll_direction": "off",  # "off" | "down" (CH3) | "up" (CH3 + CH4)
 }
 state_lock = threading.Lock()
 
@@ -122,8 +130,9 @@ _cursor_state = {
 def update_cursor_control(touch, gyro_x, gyro_y):
     """Joystick-style cursor control, called once per sensor reading.
     Moves the real OS mouse cursor while the mode + CH4 conditions hold,
-    and fires one click per fresh CH5 tap while steering. Returns
-    (mode_active, cursor_active) so the dashboard can show the state."""
+    fires one click per fresh CH5 tap while steering, and scrolls while
+    CH3 is held. Returns (mode_active, cursor_active, scroll_direction)
+    so the dashboard can show all three states."""
     with settings_lock:
         sensitivity = settings["sensitivity"]
         invert_x = settings["invert_x"]
@@ -132,13 +141,25 @@ def update_cursor_control(touch, gyro_x, gyro_y):
     mode_active = (touch[0] == 0) and (touch[1] == 1)
     cursor_active = mode_active and (touch[3] == 1)
 
+    # --- Scroll: CH3 alone scrolls down, CH3 + CH4 together scrolls up.
+    # Gated only by the overall mode, not by cursor_active, so "scroll
+    # down" works even when CH4 (steering) is off. pynput's scroll(dx, dy)
+    # uses positive dy for up, negative dy for down. ---
+    scroll_direction = "off"
+    if mode_active and touch[2] == 1:
+        scroll_direction = "up" if touch[3] == 1 else "down"
+        try:
+            mouse_controller.scroll(0, SCROLL_AMOUNT if scroll_direction == "up" else -SCROLL_AMOUNT)
+        except Exception as e:
+            print(f"Scroll failed (check OS permissions): {e}")
+
     if not cursor_active:
         # Not steering right now - reset the timer so motion doesn't jump
         # the instant steering resumes, but keep tracking CH5 so a tap
         # that happens to land exactly on the transition isn't missed.
         _cursor_state["last_time"] = None
         _cursor_state["prev_ch5"] = touch[4]
-        return mode_active, cursor_active
+        return mode_active, cursor_active, scroll_direction
 
     now = time.time()
     last_time = _cursor_state["last_time"]
@@ -173,7 +194,7 @@ def update_cursor_control(touch, gyro_x, gyro_y):
             print(f"Cursor click failed (check OS permissions): {e}")
     _cursor_state["prev_ch5"] = touch[4]
 
-    return mode_active, cursor_active
+    return mode_active, cursor_active, scroll_direction
 
 
 def on_key_press(key):
@@ -225,11 +246,11 @@ def serial_worker():
             gyro_y = data.get("gyroY", state["gyroY"])
             gyro_z = data.get("gyroZ", state["gyroZ"])
 
-            mode_active, cursor_active = False, False
+            mode_active, cursor_active, scroll_direction = False, False, "off"
             if isinstance(touch, list) and len(touch) >= 5:
                 # Done outside state_lock since it can call into the OS
                 # mouse driver, which we don't want blocking the dashboard.
-                mode_active, cursor_active = update_cursor_control(touch, gyro_x, gyro_y)
+                mode_active, cursor_active, scroll_direction = update_cursor_control(touch, gyro_x, gyro_y)
 
             with state_lock:
                 state["touch"] = touch
@@ -238,6 +259,7 @@ def serial_worker():
                 state["gyroZ"] = gyro_z
                 state["mode_active"] = mode_active
                 state["cursor_active"] = cursor_active
+                state["scroll_direction"] = scroll_direction
                 state["connected"] = True
                 state["last_update"] = time.time()
         except json.JSONDecodeError:

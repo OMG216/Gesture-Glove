@@ -336,6 +336,10 @@
           <span class="mode-label">Steering cursor (+ CH4 held)</span>
           <span class="mode-badge" id="badge-cursor">OFF</span>
         </div>
+        <div class="mode-row">
+          <span class="mode-label">Scrolling (CH3, +CH4 for up)</span>
+          <span class="mode-badge" id="badge-scroll">OFF</span>
+        </div>
 
         <div class="controls-divider"></div>
 
@@ -524,6 +528,11 @@
       document.getElementById('badge-mode').textContent = data.mode_active ? 'ON' : 'OFF';
       document.getElementById('badge-cursor').classList.toggle('on', !!data.cursor_active);
       document.getElementById('badge-cursor').textContent = data.cursor_active ? 'ON' : 'OFF';
+      const scrollBadge = document.getElementById('badge-scroll');
+      scrollBadge.classList.toggle('on', data.scroll_direction && data.scroll_direction !== 'off');
+      scrollBadge.textContent = data.scroll_direction === 'up' ? 'UP'
+        : data.scroll_direction === 'down' ? 'DOWN'
+        : 'OFF';
       footerText.textContent = data.connected
         ? 'Live · updating 5×/sec'
         : 'Arduino not responding — check the USB cable and serial port';
