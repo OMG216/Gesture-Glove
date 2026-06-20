@@ -52,8 +52,9 @@ GYRO-CURSOR MODE
 
   Gyro axis mapping is a guess (gyroX -> left/right, gyroY -> up/down)
   since it depends on how the sensor is physically mounted. If motion
-  feels backwards or swapped, flip INVERT_X/INVERT_Y or swap which axis
-  feeds dx/dy below.
+  feels backwards or swapped, use the Invert X / Invert Y buttons on the
+  dashboard (under "GYRO-CURSOR MODE") - no restart needed. Sensitivity
+  is also live-adjustable there via a slider.
 """
 
 import os
@@ -63,7 +64,7 @@ import time
 
 import serial
 import serial.tools.list_ports
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from pynput.mouse import Controller as MouseController, Button
 from pynput.keyboard import Listener as KeyboardListener, Key
 
@@ -73,9 +74,14 @@ BAUD_RATE = 115200
 # ---------------------------------------------
 
 # ---- Gyro-cursor mode config (see GYRO-CURSOR MODE above) ----
-CURSOR_SENSITIVITY = 4.0  # pixels per (deg/s) per second of tilt - raise to go faster
-INVERT_X = False
-INVERT_Y = False
+# These are just the STARTING values - while the program is running you
+# can change all three live from the dashboard's "GYRO-CURSOR MODE" panel
+# (sensitivity slider + Invert X / Invert Y buttons), no restart needed.
+DEFAULT_SENSITIVITY = 4.0  # pixels per (deg/s) per second of tilt
+SENSITIVITY_MIN = 0.5
+SENSITIVITY_MAX = 20.0
+DEFAULT_INVERT_X = False
+DEFAULT_INVERT_Y = False
 MAX_DT = 0.25  # clamp time jumps (e.g. after a stall) so the cursor can't leap
 # ----------------------------------------------------------------
 
@@ -93,6 +99,17 @@ state = {
 }
 state_lock = threading.Lock()
 
+# Live-adjustable cursor settings - read by update_cursor_control() every
+# tick, written by the /api/settings POST route when the dashboard's
+# slider/buttons change. Cheap enough to lock on every read; this isn't
+# a hot path (max ~10-20 calls/sec).
+settings = {
+    "sensitivity": DEFAULT_SENSITIVITY,
+    "invert_x": DEFAULT_INVERT_X,
+    "invert_y": DEFAULT_INVERT_Y,
+}
+settings_lock = threading.Lock()
+
 mouse_controller = MouseController()
 _cursor_state = {
     "last_time": None,  # None means "not currently steering"
@@ -107,6 +124,11 @@ def update_cursor_control(touch, gyro_x, gyro_y):
     Moves the real OS mouse cursor while the mode + CH4 conditions hold,
     and fires one click per fresh CH5 tap while steering. Returns
     (mode_active, cursor_active) so the dashboard can show the state."""
+    with settings_lock:
+        sensitivity = settings["sensitivity"]
+        invert_x = settings["invert_x"]
+        invert_y = settings["invert_y"]
+
     mode_active = (touch[0] == 0) and (touch[1] == 1)
     cursor_active = mode_active and (touch[3] == 1)
 
@@ -124,8 +146,8 @@ def update_cursor_control(touch, gyro_x, gyro_y):
     _cursor_state["last_time"] = now
 
     if dt > 0:
-        dx = gyro_x * CURSOR_SENSITIVITY * dt * (-1 if INVERT_X else 1)
-        dy = gyro_y * CURSOR_SENSITIVITY * dt * (-1 if INVERT_Y else 1)
+        dx = gyro_x * sensitivity * dt * (-1 if invert_x else 1)
+        dy = gyro_y * sensitivity * dt * (-1 if invert_y else 1)
 
         # Accumulate fractional pixels so slow tilts still move the cursor
         # smoothly instead of being rounded away to zero every tick.
@@ -237,6 +259,33 @@ def index():
 def api_sensors():
     with state_lock:
         return jsonify(state)
+
+
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    with settings_lock:
+        return jsonify(dict(settings))
+
+
+@app.route("/api/settings", methods=["POST"])
+def update_settings():
+    """Lets the dashboard change sensitivity / invert flags live, no
+    restart needed. Unknown or malformed fields are ignored rather than
+    erroring, so a bad request can't crash cursor control mid-session."""
+    data = request.get_json(silent=True) or {}
+    with settings_lock:
+        if "sensitivity" in data:
+            try:
+                val = float(data["sensitivity"])
+                settings["sensitivity"] = max(SENSITIVITY_MIN, min(SENSITIVITY_MAX, val))
+            except (TypeError, ValueError):
+                pass
+        if "invert_x" in data:
+            settings["invert_x"] = bool(data["invert_x"])
+        if "invert_y" in data:
+            settings["invert_y"] = bool(data["invert_y"])
+        result = dict(settings)
+    return jsonify(result)
 
 
 if __name__ == "__main__":

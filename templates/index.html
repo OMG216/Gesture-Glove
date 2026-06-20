@@ -191,6 +191,89 @@
     background: rgba(84, 214, 126, 0.1);
   }
 
+  .controls-divider {
+    height: 1px;
+    background: var(--line);
+    margin: 16px 0;
+  }
+
+  .control-block { margin-top: 16px; }
+  .control-block:first-child { margin-top: 0; }
+
+  .control-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .control-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--ink);
+  }
+
+  input[type="range"].slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--line);
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type="range"].slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--amber);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--amber);
+  }
+
+  input[type="range"].slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--amber);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--amber);
+  }
+
+  .toggle-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .toggle-btn {
+    flex: 1;
+    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.03em;
+    padding: 11px 0;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: #1C2228;
+    color: var(--ink-dim);
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .toggle-btn:active { transform: scale(0.98); }
+
+  .toggle-btn.active {
+    background: rgba(255, 166, 77, 0.12);
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
   footer {
     margin-top: 20px;
     text-align: center;
@@ -252,6 +335,21 @@
         <div class="mode-row">
           <span class="mode-label">Steering cursor (+ CH4 held)</span>
           <span class="mode-badge" id="badge-cursor">OFF</span>
+        </div>
+
+        <div class="controls-divider"></div>
+
+        <div class="control-block">
+          <div class="control-label-row">
+            <span class="mode-label">Sensitivity</span>
+            <span class="control-value" id="sensitivity-value">4.0</span>
+          </div>
+          <input type="range" id="sensitivity-slider" class="slider" min="0.5" max="20" step="0.5" value="4.0">
+        </div>
+
+        <div class="control-block toggle-row">
+          <button type="button" class="toggle-btn" id="invert-x-btn">Invert X</button>
+          <button type="button" class="toggle-btn" id="invert-y-btn">Invert Y</button>
         </div>
       </div>
     </section>
@@ -345,6 +443,65 @@
     statusPill.classList.toggle('bad', !connected);
     statusText.textContent = connected ? 'LINK OK' : 'NO LINK';
   }
+
+  // --- Gyro-cursor settings: sensitivity slider + invert toggles ---
+  const sensitivitySlider = document.getElementById('sensitivity-slider');
+  const sensitivityValue = document.getElementById('sensitivity-value');
+  const invertXBtn = document.getElementById('invert-x-btn');
+  const invertYBtn = document.getElementById('invert-y-btn');
+
+  function applySettingsToUI(data) {
+    sensitivitySlider.value = data.sensitivity;
+    sensitivityValue.textContent = Number(data.sensitivity).toFixed(1);
+    invertXBtn.classList.toggle('active', !!data.invert_x);
+    invertYBtn.classList.toggle('active', !!data.invert_y);
+  }
+
+  async function loadSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      applySettingsToUI(await res.json());
+    } catch (e) {
+      // Keep the slider/buttons at their defaults; they'll still work
+      // once the server is reachable - pushSettings() will resync them.
+    }
+  }
+
+  async function pushSettings(partial) {
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(partial)
+      });
+      applySettingsToUI(await res.json());
+    } catch (e) {
+      footerText.textContent = 'Could not reach the server to update settings';
+    }
+  }
+
+  // Live label while dragging, only sends the update on release so we
+  // don't flood the server with a request per pixel of drag.
+  sensitivitySlider.addEventListener('input', () => {
+    sensitivityValue.textContent = Number(sensitivitySlider.value).toFixed(1);
+  });
+  sensitivitySlider.addEventListener('change', () => {
+    pushSettings({ sensitivity: Number(sensitivitySlider.value) });
+  });
+
+  invertXBtn.addEventListener('click', () => {
+    const next = !invertXBtn.classList.contains('active');
+    invertXBtn.classList.toggle('active', next); // instant feedback
+    pushSettings({ invert_x: next });
+  });
+
+  invertYBtn.addEventListener('click', () => {
+    const next = !invertYBtn.classList.contains('active');
+    invertYBtn.classList.toggle('active', next);
+    pushSettings({ invert_y: next });
+  });
+
+  loadSettings();
 
   async function poll() {
     try {
